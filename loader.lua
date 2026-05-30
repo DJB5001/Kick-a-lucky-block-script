@@ -14,7 +14,7 @@ local ALLOWED_GAME_IDS = {
 -- GAME CHECK
 -- ================================================================
 local currentGameId = game.PlaceId
-local isAllowed = false
+local isAllowed     = false
 
 for _, id in ipairs(ALLOWED_GAME_IDS) do
     if currentGameId == id then
@@ -35,7 +35,7 @@ if not isAllowed then
     return
 end
 
-print("[DJ HUB] ✅ Game ID verified: " .. GAME_NAME .. " (" .. currentGameId .. ")")
+print("[DJ HUB] Game ID verified: " .. GAME_NAME .. " (" .. currentGameId .. ")")
 
 -- ================================================================
 -- CONFIG (Key System)
@@ -47,10 +47,10 @@ local Config = {
 }
 
 -- ================================================================
--- SAVE SYSTEM (liest & schreibt Rayfield.Flags)
+-- SAVE SYSTEM
 -- ================================================================
-local SaveSystem = {}
-local SAVE_DIR   = "DJHub/Settings"
+local SaveSystem  = {}
+local SAVE_DIR    = "DJHub/Settings"
 local HttpService = game:GetService("HttpService")
 
 local function hasFS()
@@ -162,7 +162,6 @@ _G.loadSettings   = SaveSystem.load
 _G.deleteSettings = SaveSystem.delete
 _G.listSettings   = SaveSystem.list
 
--- Event system
 local subscribers = {}
 _G.__DJ_Subscribe = function(fn)  table.insert(subscribers, fn) end
 _G.__DJ_Notify    = function(evt) for _, fn in ipairs(subscribers) do pcall(fn, evt) end end
@@ -178,17 +177,17 @@ end
 local function loadModule(name)
     local src = httpGet(REPO_BASE .. name)
     if not src then
-        warn("[DJ HUB] ❌ Download fehlgeschlagen: " .. name)
+        warn("[DJ HUB] Download failed: " .. name)
         return nil
     end
     local ok, chunk = pcall(loadstring, src)
     if not ok or not chunk then
-        warn("[DJ HUB] ❌ Compile fehlgeschlagen: " .. name)
+        warn("[DJ HUB] Compile failed: " .. name)
         return nil
     end
     local ok2, mod = pcall(chunk)
     if not ok2 then
-        warn("[DJ HUB] ❌ Ausführung fehlgeschlagen: " .. name)
+        warn("[DJ HUB] Execution failed: " .. name)
         return nil
     end
     return mod
@@ -197,38 +196,37 @@ end
 -- ================================================================
 -- BOOTSTRAP
 -- ================================================================
-print("[DJ HUB] Starte " .. GAME_NAME .. " Script v" .. VERSION .. "...")
+print("[DJ HUB] Starting " .. GAME_NAME .. " v" .. VERSION .. "...")
 
 local Utils = loadModule("dj_utils.lua")
-if not Utils then warn("[DJ HUB] Utils konnte nicht geladen werden") end
+if not Utils then warn("[DJ HUB] Utils failed to load") end
 
 local Overlay = loadModule("dj_overlay.lua")
 if Overlay then
     Overlay.showDiscordProgress(
-        "Lade DJ HUB v" .. VERSION .. "\nGame: " .. GAME_NAME,
+        "Loading DJ HUB v" .. VERSION .. "\nGame: " .. GAME_NAME,
         6
     )
 end
 
 local UIBase = loadModule("dj_ui_base.lua")
 if not UIBase then
-    error("[DJ HUB] FATAL: UI Base konnte nicht geladen werden")
+    error("[DJ HUB] FATAL: UI base failed to load")
 end
 
 local Rayfield, Window = UIBase.createWindow()
 if not Rayfield or not Window then
-    error("[DJ HUB] FATAL: Fenster konnte nicht erstellt werden")
+    error("[DJ HUB] FATAL: Window could not be created")
 end
 
--- Rayfield global verfügbar machen (wird vom Save-System gebraucht)
 _G.Rayfield = Rayfield
 
 -- ================================================================
--- TABS LADEN (nach Key-Verifikation)
+-- LOAD TABS AFTER KEY VERIFICATION
 -- ================================================================
 local function onKeyVerified()
     task.wait(0.2)
-    print("[DJ HUB] Lade Tabs...")
+    print("[DJ HUB] Loading tabs...")
 
     local tabs = {
         { file = "main.lua",            label = "Home"     },
@@ -242,20 +240,22 @@ local function onKeyVerified()
         if build then
             local ok, err = pcall(build, Window, Rayfield, Utils)
             if ok then
-                print("[DJ HUB] ✅ " .. entry.label .. " Tab geladen")
+                print("[DJ HUB] " .. entry.label .. " tab loaded")
             else
-                warn("[DJ HUB] ❌ " .. entry.label .. " Tab Fehler: " .. tostring(err))
+                warn("[DJ HUB] " .. entry.label .. " tab error: " .. tostring(err))
             end
+        else
+            warn("[DJ HUB] Could not load: " .. entry.file)
         end
     end
 
     Rayfield:Notify({
-        Title   = "DJ HUB geladen! 🎉",
-        Content = "Kick a Lucky Block Script bereit!\nDiscord: discord.gg/MTXnFfHXW9",
+        Title   = "DJ HUB Ready!",
+        Content = "Kick a Lucky Block Script loaded!\nDiscord: discord.gg/MTXnFfHXW9",
         Duration = 6,
     })
 
-    print("[DJ HUB] ✅ Alle Tabs geladen.")
+    print("[DJ HUB] All tabs loaded.")
 end
 
 -- ================================================================
@@ -265,12 +265,12 @@ local buildKey = loadModule("dj_tab_key.lua")
 if buildKey then
     local ok, err = pcall(buildKey, Window, Rayfield, Utils, Config, onKeyVerified)
     if not ok then
-        warn("[DJ HUB] Key Tab Fehler: " .. tostring(err))
+        warn("[DJ HUB] Key tab error: " .. tostring(err))
         onKeyVerified()
     end
 else
-    warn("[DJ HUB] Key Tab konnte nicht geladen werden — überspringe Key-Check")
+    warn("[DJ HUB] Key tab failed to load — skipping key check")
     onKeyVerified()
 end
 
-print("[DJ HUB] Loader abgeschlossen.")
+print("[DJ HUB] Loader complete.")
