@@ -42,7 +42,6 @@ end
 
 function SaveSystem.save(name)
     if not ensureDir() then return false, "Filesystem not available" end
-
     local flags = {}
     local RF = _G.Rayfield
     if RF and RF.Flags then
@@ -58,11 +57,9 @@ function SaveSystem.save(name)
             end
         end
     end
-
     local data = { version = VERSION, saved = os.time(), flags = flags }
     local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
     if not ok then return false, "Encoding failed" end
-
     local path = ("%s/%s.json"):format(SAVE_DIR, name:gsub("[^%w%-_]", "_"))
     local okw  = pcall(function() writefile(path, json) end)
     return okw, okw and nil or "Write failed"
@@ -70,16 +67,12 @@ end
 
 function SaveSystem.load(name)
     if not hasFS() then return false, "Filesystem not available" end
-
     local path = ("%s/%s.json"):format(SAVE_DIR, name:gsub("[^%w%-_]", "_"))
     if not isfile(path) then return false, "File not found" end
-
     local okr, raw = pcall(readfile, path)
     if not okr or type(raw) ~= "string" then return false, "Read failed" end
-
     local ok, data = pcall(function() return HttpService:JSONDecode(raw) end)
     if not ok or type(data) ~= "table" then return false, "Decode failed" end
-
     local RF = _G.Rayfield
     if data.flags and RF and RF.Flags then
         for flagName, val in pairs(data.flags) do
@@ -89,7 +82,6 @@ function SaveSystem.load(name)
             end
         end
     end
-
     if _G.__DJ_Notify then _G.__DJ_Notify("settings:applied") end
     return true
 end
@@ -113,11 +105,7 @@ function SaveSystem.list()
                 if okr and raw then
                     local ok2, data = pcall(function() return HttpService:JSONDecode(raw) end)
                     if ok2 and data then
-                        table.insert(files, {
-                            name    = name,
-                            time    = data.saved or 0,
-                            version = data.version or "?",
-                        })
+                        table.insert(files, { name = name, time = data.saved or 0, version = data.version or "?" })
                     end
                 end
             end
