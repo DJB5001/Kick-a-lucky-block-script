@@ -4,7 +4,7 @@
 
 local GAME_NAME = "Kick a Lucky Block"
 local VERSION   = "1.0.0"
-local REPO_BASE = "https://raw.githubusercontent.com/DJB5001/Kick-a-lucky-block-test/main/"
+local REPO_BASE = "https://raw.githubusercontent.com/DJB5001/Kick-a-lucky-block-script/main/"
 
 -- ================================================================
 -- CONFIG (Key System)
