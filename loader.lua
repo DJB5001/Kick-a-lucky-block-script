@@ -6,37 +6,6 @@ local GAME_NAME = "Kick a Lucky Block"
 local VERSION   = "1.0.0"
 local REPO_BASE = "https://raw.githubusercontent.com/DJB5001/Kick-a-lucky-block-test/main/"
 
-local ALLOWED_GAME_IDS = {
-    89469502395769
-}
-
--- ================================================================
--- GAME CHECK
--- ================================================================
-local currentGameId = game.PlaceId
-local isAllowed     = false
-
-for _, id in ipairs(ALLOWED_GAME_IDS) do
-    if currentGameId == id then
-        isAllowed = true
-        break
-    end
-end
-
-if not isAllowed then
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title    = "DJ HUB - Wrong Game",
-            Text     = "This script is for Kick a Lucky Block only!\nYour Game ID: " .. tostring(currentGameId),
-            Duration = 10,
-        })
-    end)
-    error("[DJ HUB] Wrong game! This script is for Kick a Lucky Block only.")
-    return
-end
-
-print("[DJ HUB] Game ID verified: " .. GAME_NAME .. " (" .. currentGameId .. ")")
-
 -- ================================================================
 -- CONFIG (Key System)
 -- ================================================================
