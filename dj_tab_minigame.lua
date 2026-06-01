@@ -508,7 +508,17 @@ return function(Window, Rayfield, Utils)
         local PlayerGui    = LocalPlayer:WaitForChild("PlayerGui")
         local KickUpgrades = PlayerGui:WaitForChild("KickUpgrades")
         local vim          = game:GetService("VirtualInputManager")
+        local GuiService   = game:GetService("GuiService")
         local lastBonusClick = {}
+
+        -- GuiInset korrigiert die Verschiebung auf Mobile/iPad
+        -- AbsolutePosition gibt GUI-Koordinaten zurück, aber vim braucht Screen-Koordinaten
+        local function toScreenPos(absPos, absSize)
+            local inset = GuiService:GetGuiInset()
+            local cx = absPos.X + absSize.X / 2 + inset.X
+            local cy = absPos.Y + absSize.Y / 2 + inset.Y
+            return cx, cy
+        end
 
         while bonusEnabled do
             for _, obj in ipairs(KickUpgrades:GetChildren()) do
@@ -528,8 +538,7 @@ return function(Window, Rayfield, Utils)
                     absPos = obj.AbsolutePosition
                 end)
                 if not ok or not absPos or not absSize then continue end
-                local cx = absPos.X + absSize.X / 2
-                local cy = absPos.Y + absSize.Y / 2
+                local cx, cy = toScreenPos(absPos, absSize)
                 pcall(function() vim:SendMouseButtonEvent(cx, cy, 0, true,  game, 0) end)
                 pcall(function() vim:SendTouchEvent(0, Vector2.new(cx, cy), Enum.UserInputState.Begin, game) end)
                 task.wait(0.05)
