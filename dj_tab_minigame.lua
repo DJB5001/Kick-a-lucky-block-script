@@ -108,9 +108,19 @@ return function(Window, Rayfield, Utils)
     local TP_DISTANCE   = 25  -- Wenn Wave naeher als X Studs -> TP
     local TP_BEHIND_OFF = 15  -- Wie weit hinter die Wave TP-en
 
+    local lastDebugPrint = 0  -- Throttle fuer Wave-Detected prints
+
     local function dodgeWave(hrp, nearestPart)
         if godmodeTpCooldown then return end
         godmodeTpCooldown = true
+
+        local partName    = tostring(nearestPart.Name)
+        local floorName   = tostring(nearestPart.Parent and nearestPart.Parent.Parent and nearestPart.Parent.Parent.Name or "?")
+        local speedName   = tostring(nearestPart.Parent and nearestPart.Parent.Name or "?")
+        local dist        = math.floor((nearestPart.Position - hrp.Position).Magnitude)
+
+        print(string.format("[GODMODE] TP ausgeloest | Wave: %s > %s > %s | Distanz: %d Studs",
+            floorName, speedName, partName, dist))
 
         pcall(function()
             local backPart = getBackPart(nearestPart)
@@ -119,24 +129,30 @@ return function(Window, Rayfield, Utils)
             if backPart then
                 local dir = (backPart.Position - nearestPart.Position).Unit
                 tpTarget  = backPart.CFrame + dir * TP_BEHIND_OFF + Vector3.new(0, 3, 0)
+                print(string.format("[GODMODE] TP hinter Back-Part | Ziel: (%.1f, %.1f, %.1f)",
+                    tpTarget.X, tpTarget.Y, tpTarget.Z))
             else
                 local dir = (hrp.Position - nearestPart.Position).Unit
                 dir       = Vector3.new(dir.X, 0, dir.Z).Unit
                 tpTarget  = CFrame.new(hrp.Position + dir * TP_BEHIND_OFF)
+                print(string.format("[GODMODE] TP Fallback (kein Back-Part) | Ziel: (%.1f, %.1f, %.1f)",
+                    tpTarget.X, tpTarget.Y, tpTarget.Z))
             end
 
             hrp.CFrame = tpTarget
         end)
 
-        print("[GODMODE] Wave dodge!")
+        print("[GODMODE] TP abgeschlossen | Cooldown 1.5s...")
 
         task.delay(1.5, function()
             godmodeTpCooldown = false
+            print("[GODMODE] Cooldown abgelaufen, bereit fuer naechsten Dodge")
         end)
     end
 
     local function enableGodmode()
         godmodeEnabled = true
+        print("[GODMODE] Wave-Dodge gestartet | TP_DISTANCE=" .. TP_DISTANCE .. " | TP_BEHIND_OFF=" .. TP_BEHIND_OFF)
 
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() end
         godmodeHeartbeat = RunService.Heartbeat:Connect(function()
@@ -146,6 +162,21 @@ return function(Window, Rayfield, Utils)
             if not hrp then return end
 
             local nearestPart, dist = getNearestWavePart(hrp.Position)
+
+            -- Alle 2 Sekunden ausgeben ob Wave gefunden (nicht jeden Frame)
+            local now = tick()
+            if now - lastDebugPrint >= 2 then
+                lastDebugPrint = now
+                if nearestPart then
+                    local floorName = tostring(nearestPart.Parent and nearestPart.Parent.Parent and nearestPart.Parent.Parent.Name or "?")
+                    local speedName = tostring(nearestPart.Parent and nearestPart.Parent.Name or "?")
+                    print(string.format("[GODMODE] Wave aktiv: %s > %s > %s | Distanz: %.1f Studs",
+                        floorName, speedName, nearestPart.Name, dist))
+                else
+                    print("[GODMODE] Keine Wave im Workspace gefunden")
+                end
+            end
+
             if nearestPart and dist < TP_DISTANCE then
                 dodgeWave(hrp, nearestPart)
             end
