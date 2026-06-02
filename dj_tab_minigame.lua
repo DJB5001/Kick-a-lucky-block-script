@@ -49,87 +49,123 @@ return function(Window, Rayfield, Utils)
     end
 
     -- ================================================================
-    -- GODMODE (State + HealthChanged + Heartbeat)
+    -- GODMODE (Wave-Dodge)
+    -- Struktur: Waves > [FloorName] > [Speed] > [Back/Bottom/Front/Left/Right/Top]
+    -- Wenn eine Wave zu nah ist -> TP hinter die Wave (hinter "Back"-Part)
     -- ================================================================
-    local godmodeEnabled   = false
-    local godmodeHeartbeat = nil
-    local godmodeCharConn  = nil
-    local godmodeStateConn = nil
+    local godmodeEnabled    = false
+    local godmodeHeartbeat  = nil
+    local godmodeCharConn   = nil
+    local godmodeTpCooldown = false
 
-    local function applyGodmode(character)
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
-
-        -- HP hoch setzen
-        pcall(function()
-            humanoid.MaxHealth = 1e6
-            humanoid.Health    = 1e6
-        end)
-
-        -- Dead + FallingDown sperren
-        pcall(function()
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead,       false)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-        end)
-
-        -- HealthChanged: sofort wiederherstellen
-        pcall(function()
-            if godmodeStateConn then godmodeStateConn:Disconnect() end
-            godmodeStateConn = humanoid.HealthChanged:Connect(function(hp)
-                if not godmodeEnabled then return end
-                if hp < humanoid.MaxHealth then
-                    pcall(function()
-                        humanoid.Health = humanoid.MaxHealth
-                        humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-                    end)
+    -- Alle Wave-Parts sammeln die aktiv sind
+    local function getActiveWaveParts()
+        local parts = {}
+        local waves = workspace:FindFirstChild("Waves")
+        if not waves then return parts end
+        for _, floorFolder in ipairs(waves:GetChildren()) do
+            for _, speedFolder in ipairs(floorFolder:GetChildren()) do
+                for _, part in ipairs(speedFolder:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        table.insert(parts, part)
+                    end
                 end
+                if speedFolder:IsA("BasePart") then
+                    table.insert(parts, speedFolder)
+                end
+            end
+        end
+        return parts
+    end
+
+    -- Naechste Wave-Part + Distanz finden
+    local function getNearestWavePart(hrpPos)
+        local nearest     = nil
+        local nearestDist = math.huge
+        for _, part in ipairs(getActiveWaveParts()) do
+            local ok, dist = pcall(function()
+                return (part.Position - hrpPos).Magnitude
             end)
+            if ok and dist < nearestDist then
+                nearestDist = dist
+                nearest     = part
+            end
+        end
+        return nearest, nearestDist
+    end
+
+    -- "Back"-Part der Wave finden (Spieler dahinter TP-en)
+    local function getBackPart(wavePart)
+        local speedFolder = wavePart.Parent
+        if not speedFolder then return nil end
+        local back = speedFolder:FindFirstChild("Back")
+        if back and back:IsA("BasePart") then return back end
+        local root = speedFolder:FindFirstChild("RootPart")
+        if root and root:IsA("BasePart") then return root end
+        return nil
+    end
+
+    local TP_DISTANCE   = 25  -- Wenn Wave naeher als X Studs -> TP
+    local TP_BEHIND_OFF = 15  -- Wie weit hinter die Wave TP-en
+
+    local function dodgeWave(hrp, nearestPart)
+        if godmodeTpCooldown then return end
+        godmodeTpCooldown = true
+
+        pcall(function()
+            local backPart = getBackPart(nearestPart)
+            local tpTarget
+
+            if backPart then
+                local dir = (backPart.Position - nearestPart.Position).Unit
+                tpTarget  = backPart.CFrame + dir * TP_BEHIND_OFF + Vector3.new(0, 3, 0)
+            else
+                local dir = (hrp.Position - nearestPart.Position).Unit
+                dir       = Vector3.new(dir.X, 0, dir.Z).Unit
+                tpTarget  = CFrame.new(hrp.Position + dir * TP_BEHIND_OFF)
+            end
+
+            hrp.CFrame = tpTarget
+        end)
+
+        print("[GODMODE] Wave dodge!")
+
+        task.delay(1.5, function()
+            godmodeTpCooldown = false
         end)
     end
 
     local function enableGodmode()
         godmodeEnabled = true
-        local char = LocalPlayer.Character
-        if char then applyGodmode(char) end
 
-        -- Heartbeat: HP + Dead-State jeden Frame sichern
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() end
         godmodeHeartbeat = RunService.Heartbeat:Connect(function()
             if not godmodeEnabled then return end
-            local c = LocalPlayer.Character
-            local h = c and c:FindFirstChildOfClass("Humanoid")
-            if not h then return end
-            pcall(function()
-                if h.Health < h.MaxHealth then h.Health = h.MaxHealth end
-                h:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-            end)
+            local c   = LocalPlayer.Character
+            local hrp = c and c:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
+            local nearestPart, dist = getNearestWavePart(hrp.Position)
+            if nearestPart and dist < TP_DISTANCE then
+                dodgeWave(hrp, nearestPart)
+            end
         end)
 
-        -- Re-apply bei Respawn
         if godmodeCharConn then godmodeCharConn:Disconnect() end
-        godmodeCharConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
+        godmodeCharConn = LocalPlayer.CharacterAdded:Connect(function()
             if not godmodeEnabled then return end
-            task.wait(0.3)
-            applyGodmode(newChar)
+            godmodeTpCooldown = false
         end)
+
+        print("[GODMODE] Wave-Dodge aktiv")
     end
 
     local function disableGodmode()
-        godmodeEnabled = false
+        godmodeEnabled    = false
+        godmodeTpCooldown = false
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() godmodeHeartbeat = nil end
         if godmodeCharConn  then godmodeCharConn:Disconnect()  godmodeCharConn  = nil end
-        if godmodeStateConn then godmodeStateConn:Disconnect() godmodeStateConn = nil end
-
-        local char     = LocalPlayer.Character
-        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            pcall(function()
-                humanoid.MaxHealth = 100
-                humanoid.Health    = 100
-                humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead,        true)
-                humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown,  true)
-            end)
-        end
+        print("[GODMODE] Deaktiviert")
     end
 
     local godmodeWasActive = false
