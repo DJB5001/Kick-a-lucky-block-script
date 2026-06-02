@@ -194,70 +194,141 @@ return function(Window, Rayfield, Utils)
         print("[DEATH DEBUG] Aktiv fuer: " .. (character.Name or "?") .. " | HP: " .. tostring(humanoid.Health))
     end
 
-    -- Charakter-Parts auf CanTouch=false setzen
-    local function disableCharTouch(character)
+    -- Charakter komplett aus Kill-Zone raushalten
+    -- Spiel nutzt Magnitude-Check server-seitig -> Charakter wegtp-en wenn Wave nah
+    local lastGodmodePos = nil
+
+    local function applyCharNoClip(character)
         local count = 0
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then
-                pcall(function() part.CanTouch = false end)
+                pcall(function()
+                    part.CanTouch   = false
+                    part.CanCollide = false
+                end)
                 count += 1
             end
         end
-        print("[GODMODE] " .. count .. " Charakter-Parts: CanTouch=false")
+        print("[GODMODE] " .. count .. " Charakter-Parts: CanTouch=false CanCollide=false")
     end
 
-    local function enableCharTouch(character)
+    local function restoreChar(character)
         if not character then return end
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then
-                pcall(function() part.CanTouch = true end)
+                pcall(function()
+                    part.CanTouch   = true
+                    part.CanCollide = true
+                end)
             end
         end
-        print("[GODMODE] Charakter-Parts: CanTouch wiederhergestellt")
+        print("[GODMODE] Charakter-Parts wiederhergestellt")
     end
+
+    -- Alle aktiven Kill-Zonen finden (Magnitude-basiert)
+    -- Spiel checkt server-seitig ob Spieler nah genug ist -> wir TP-en weg
+    local SAFE_DISTANCE = 80  -- Studs Abstand zur Wave
+
+    local function getWavePositions()
+        local positions = {}
+        local waves = workspace:FindFirstChild("Waves")
+        if not waves then return positions end
+        for _, floorFolder in ipairs(waves:GetChildren()) do
+            for _, speedFolder in ipairs(floorFolder:GetChildren()) do
+                -- RootPart ist die Hauptposition der Wave
+                local root = speedFolder:FindFirstChild("RootPart")
+                if root and root:IsA("BasePart") then
+                    table.insert(positions, { pos = root.Position, name = floorFolder.Name .. ">" .. speedFolder.Name })
+                end
+                -- Fallback: alle BaseParts
+                for _, part in ipairs(speedFolder:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        table.insert(positions, { pos = part.Position, name = floorFolder.Name .. ">" .. speedFolder.Name .. ">" .. part.Name })
+                    end
+                end
+            end
+        end
+        return positions
+    end
+
+    local tpCooldown = false
 
     local function enableGodmode()
         godmodeEnabled = true
-        print("[GODMODE] Gestartet — deaktiviere Charakter-Touch...")
+        print("[GODMODE] Gestartet")
 
         local char = LocalPlayer.Character
         if char then
             startDeathDebug(char)
-            disableCharTouch(char)
+            applyCharNoClip(char)
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then lastGodmodePos = hrp.CFrame end
         end
 
-        -- Heartbeat: CanTouch jeden Frame sichern (Spiel setzt es evtl. zurück)
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() end
         godmodeHeartbeat = RunService.Heartbeat:Connect(function()
             if not godmodeEnabled then return end
-            local c = LocalPlayer.Character
-            if not c then return end
+            local c   = LocalPlayer.Character
+            local hrp = c and c:FindFirstChild("HumanoidRootPart")
+            local hum = c and c:FindFirstChildOfClass("Humanoid")
+            if not hrp or not hum then return end
+
+            -- CanTouch/CanCollide jeden Frame sichern
             for _, part in ipairs(c:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanTouch then
-                    pcall(function() part.CanTouch = false end)
+                if part:IsA("BasePart") then
+                    if part.CanTouch   then pcall(function() part.CanTouch   = false end) end
+                    if part.CanCollide then pcall(function() part.CanCollide = false end) end
                 end
+            end
+
+            -- Magnitude-Check: wenn Wave zu nah -> wegtp-en
+            if not tpCooldown then
+                local wavePositions = getWavePositions()
+                for _, waveData in ipairs(wavePositions) do
+                    local dist = (hrp.Position - waveData.pos).Magnitude
+                    if dist < SAFE_DISTANCE then
+                        tpCooldown = true
+                        -- Sicher hinter die letzte sichere Position
+                        if lastGodmodePos then
+                            hrp.CFrame = lastGodmodePos
+                            print("[GODMODE] Wave zu nah (" .. math.floor(dist) .. " Studs) -> TP zur letzten sicheren Position")
+                        end
+                        task.delay(1, function() tpCooldown = false end)
+                        break
+                    end
+                end
+                -- Sichere Position merken wenn weit genug
+                local allSafe = true
+                for _, waveData in ipairs(getWavePositions()) do
+                    if (hrp.Position - waveData.pos).Magnitude < SAFE_DISTANCE then
+                        allSafe = false
+                        break
+                    end
+                end
+                if allSafe then lastGodmodePos = hrp.CFrame end
             end
         end)
 
-        -- Re-apply bei Respawn
         if godmodeCharConn then godmodeCharConn:Disconnect() end
         godmodeCharConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
             if not godmodeEnabled then return end
             task.wait(0.3)
             startDeathDebug(newChar)
-            disableCharTouch(newChar)
-            print("[GODMODE] Nach Respawn: Charakter-Touch erneut deaktiviert")
+            applyCharNoClip(newChar)
+            tpCooldown = false
+            print("[GODMODE] Nach Respawn: erneut aktiviert")
         end)
     end
 
     local function disableGodmode()
         godmodeEnabled = false
+        tpCooldown     = false
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() godmodeHeartbeat = nil end
         if godmodeCharConn  then godmodeCharConn:Disconnect()  godmodeCharConn  = nil end
         for _, c in ipairs(deathDebugConns) do pcall(function() c:Disconnect() end) end
         deathDebugConns = {}
         local char = LocalPlayer.Character
-        if char then enableCharTouch(char) end
+        if char then restoreChar(char) end
         print("[GODMODE] Deaktiviert")
     end
 
