@@ -110,9 +110,73 @@ return function(Window, Rayfield, Utils)
 
     local lastDebugPrint = 0
 
+    -- ================================================================
+    -- DEATH DEBUG
+    -- ================================================================
+    local deathDebugConns = {}
+
+    local function startDeathDebug(character)
+        for _, c in ipairs(deathDebugConns) do pcall(function() c:Disconnect() end) end
+        deathDebugConns = {}
+
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+
+        -- Health sinkt -> was hat Schaden gemacht?
+        table.insert(deathDebugConns, humanoid.HealthChanged:Connect(function(hp)
+            if hp < humanoid.MaxHealth then
+                local dmg = humanoid.MaxHealth - hp
+                print(string.format("[DEATH DEBUG] Schaden erhalten: %.1f HP | Verbleibend: %.1f / %.1f",
+                    dmg, hp, humanoid.MaxHealth))
+
+                -- Checken welche Wave-Parts noch CanTouch=true haben
+                local waves = workspace:FindFirstChild("Waves")
+                if waves then
+                    for _, floorFolder in ipairs(waves:GetChildren()) do
+                        for _, speedFolder in ipairs(floorFolder:GetChildren()) do
+                            for _, part in ipairs(speedFolder:GetChildren()) do
+                                if part:IsA("BasePart") and (part.CanCollide or part.CanTouch) then
+                                    print(string.format("[DEATH DEBUG] Wave-Part noch aktiv! %s > %s > %s | CanCollide=%s CanTouch=%s",
+                                        floorFolder.Name, speedFolder.Name, part.Name,
+                                        tostring(part.CanCollide), tostring(part.CanTouch)))
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end))
+
+        -- Gestorben
+        table.insert(deathDebugConns, humanoid.Died:Connect(function()
+            print("[DEATH DEBUG] ===== SPIELER GESTORBEN =====")
+            -- Alle Touching Parts loggen
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local touching = hrp:GetTouchingParts()
+                if #touching == 0 then
+                    print("[DEATH DEBUG] Keine Parts berührt beim Tod")
+                else
+                    for _, p in ipairs(touching) do
+                        print(string.format("[DEATH DEBUG] Berührt beim Tod: %s (Parent: %s)",
+                            p.Name, tostring(p.Parent and p.Parent.Name)))
+                    end
+                end
+            end
+            print("[DEATH DEBUG] ==============================")
+        end))
+
+        print("[DEATH DEBUG] Death-Debug aktiv fuer: " .. (character.Name or "?"))
+    end
+
     local function enableGodmode()
         godmodeEnabled = true
         print("[GODMODE] Gestartet — deaktiviere Wave-Kollision...")
+
+        -- Death Debug sofort starten
+        local char = LocalPlayer.Character
+        if char then startDeathDebug(char) end
+
         disableWaveCollision()
 
         -- Heartbeat: neue Wave-Parts die spawnen auch sofort deaktivieren
@@ -131,9 +195,10 @@ return function(Window, Rayfield, Utils)
 
         -- Re-apply bei Respawn
         if godmodeCharConn then godmodeCharConn:Disconnect() end
-        godmodeCharConn = LocalPlayer.CharacterAdded:Connect(function()
+        godmodeCharConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
             if not godmodeEnabled then return end
             task.wait(0.3)
+            startDeathDebug(newChar)
             disableWaveCollision()
             print("[GODMODE] Nach Respawn: Wave-Kollision erneut deaktiviert")
         end)
@@ -143,6 +208,8 @@ return function(Window, Rayfield, Utils)
         godmodeEnabled = false
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() godmodeHeartbeat = nil end
         if godmodeCharConn  then godmodeCharConn:Disconnect()  godmodeCharConn  = nil end
+        for _, c in ipairs(deathDebugConns) do pcall(function() c:Disconnect() end) end
+        deathDebugConns = {}
         enableWaveCollision()
         print("[GODMODE] Deaktiviert — Wave-Kollision wiederhergestellt")
     end
