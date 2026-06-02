@@ -49,16 +49,15 @@ return function(Window, Rayfield, Utils)
     end
 
     -- ================================================================
-    -- GODMODE (Wave-Dodge)
-    -- Struktur: Waves > [FloorName] > [Speed] > [Back/Bottom/Front/Left/Right/Top]
-    -- Wenn eine Wave zu nah ist -> TP hinter die Wave (hinter "Back"-Part)
+    -- GODMODE (CanCollide + CanTouch = false auf Wave-Parts)
+    -- Struktur: Waves > [FloorName] > [Speed] > [Parts]
+    -- Deaktiviert Kollision aller Wave-Parts solange Godmode an ist
     -- ================================================================
-    local godmodeEnabled    = false
-    local godmodeHeartbeat  = nil
-    local godmodeCharConn   = nil
-    local godmodeTpCooldown = false
+    local godmodeEnabled   = false
+    local godmodeHeartbeat = nil
+    local godmodeCharConn  = nil
 
-    -- Alle Wave-Parts sammeln die aktiv sind
+    -- Alle Wave-Parts sammeln
     local function getActiveWaveParts()
         local parts = {}
         local waves = workspace:FindFirstChild("Waves")
@@ -78,125 +77,74 @@ return function(Window, Rayfield, Utils)
         return parts
     end
 
-    -- Naechste Wave-Part + Distanz finden
-    local function getNearestWavePart(hrpPos)
-        local nearest     = nil
-        local nearestDist = math.huge
-        for _, part in ipairs(getActiveWaveParts()) do
-            local ok, dist = pcall(function()
-                return (part.Position - hrpPos).Magnitude
+    local function disableWaveCollision()
+        local parts = getActiveWaveParts()
+        local count = 0
+        for _, part in ipairs(parts) do
+            pcall(function()
+                part.CanCollide = false
+                part.CanTouch   = false
             end)
-            if ok and dist < nearestDist then
-                nearestDist = dist
-                nearest     = part
-            end
+            count += 1
         end
-        return nearest, nearestDist
+        if count > 0 then
+            print("[GODMODE] " .. count .. " Wave-Parts deaktiviert (CanCollide=false, CanTouch=false)")
+        else
+            print("[GODMODE] Keine Wave-Parts gefunden")
+        end
+        return count
     end
 
-    -- "Back"-Part der Wave finden (Spieler dahinter TP-en)
-    local function getBackPart(wavePart)
-        local speedFolder = wavePart.Parent
-        if not speedFolder then return nil end
-        local back = speedFolder:FindFirstChild("Back")
-        if back and back:IsA("BasePart") then return back end
-        local root = speedFolder:FindFirstChild("RootPart")
-        if root and root:IsA("BasePart") then return root end
-        return nil
+    local function enableWaveCollision()
+        local parts = getActiveWaveParts()
+        local count = 0
+        for _, part in ipairs(parts) do
+            pcall(function()
+                part.CanCollide = true
+                part.CanTouch   = true
+            end)
+            count += 1
+        end
+        print("[GODMODE] " .. count .. " Wave-Parts wiederhergestellt")
     end
 
-    local TP_DISTANCE   = 100  -- Wenn Wave naeher als X Studs -> TP
-    local TP_BEHIND_OFF = 15  -- Wie weit hinter die Wave TP-en
-
-    local lastDebugPrint = 0  -- Throttle fuer Wave-Detected prints
-
-    local function dodgeWave(hrp, nearestPart)
-        if godmodeTpCooldown then return end
-        godmodeTpCooldown = true
-
-        local partName    = tostring(nearestPart.Name)
-        local floorName   = tostring(nearestPart.Parent and nearestPart.Parent.Parent and nearestPart.Parent.Parent.Name or "?")
-        local speedName   = tostring(nearestPart.Parent and nearestPart.Parent.Name or "?")
-        local dist        = math.floor((nearestPart.Position - hrp.Position).Magnitude)
-
-        print(string.format("[GODMODE] TP ausgeloest | Wave: %s > %s > %s | Distanz: %d Studs",
-            floorName, speedName, partName, dist))
-
-        pcall(function()
-            local backPart = getBackPart(nearestPart)
-            local tpTarget
-
-            if backPart then
-                local dir = (backPart.Position - nearestPart.Position).Unit
-                tpTarget  = backPart.CFrame + dir * TP_BEHIND_OFF + Vector3.new(0, 3, 0)
-                print(string.format("[GODMODE] TP hinter Back-Part | Ziel: (%.1f, %.1f, %.1f)",
-                    tpTarget.X, tpTarget.Y, tpTarget.Z))
-            else
-                local dir = (hrp.Position - nearestPart.Position).Unit
-                dir       = Vector3.new(dir.X, 0, dir.Z).Unit
-                tpTarget  = CFrame.new(hrp.Position + dir * TP_BEHIND_OFF)
-                print(string.format("[GODMODE] TP Fallback (kein Back-Part) | Ziel: (%.1f, %.1f, %.1f)",
-                    tpTarget.X, tpTarget.Y, tpTarget.Z))
-            end
-
-            hrp.CFrame = tpTarget
-        end)
-
-        print("[GODMODE] TP abgeschlossen | Cooldown 1.5s...")
-
-        task.delay(1.5, function()
-            godmodeTpCooldown = false
-            print("[GODMODE] Cooldown abgelaufen, bereit fuer naechsten Dodge")
-        end)
-    end
+    local lastDebugPrint = 0
 
     local function enableGodmode()
         godmodeEnabled = true
-        print("[GODMODE] Wave-Dodge gestartet | TP_DISTANCE=" .. TP_DISTANCE .. " | TP_BEHIND_OFF=" .. TP_BEHIND_OFF)
+        print("[GODMODE] Gestartet — deaktiviere Wave-Kollision...")
+        disableWaveCollision()
 
+        -- Heartbeat: neue Wave-Parts die spawnen auch sofort deaktivieren
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() end
         godmodeHeartbeat = RunService.Heartbeat:Connect(function()
             if not godmodeEnabled then return end
-            local c   = LocalPlayer.Character
-            local hrp = c and c:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
-
-            local nearestPart, dist = getNearestWavePart(hrp.Position)
-
-            -- Alle 2 Sekunden ausgeben ob Wave gefunden (nicht jeden Frame)
             local now = tick()
-            if now - lastDebugPrint >= 0.5 then
+            if now - lastDebugPrint >= 1 then
                 lastDebugPrint = now
-                if nearestPart then
-                    local floorName = tostring(nearestPart.Parent and nearestPart.Parent.Parent and nearestPart.Parent.Parent.Name or "?")
-                    local speedName = tostring(nearestPart.Parent and nearestPart.Parent.Name or "?")
-                    print(string.format("[GODMODE] Wave aktiv: %s > %s > %s | Distanz: %.1f Studs",
-                        floorName, speedName, nearestPart.Name, dist))
-                else
-                    print("[GODMODE] Keine Wave im Workspace gefunden")
+                local count = disableWaveCollision()
+                if count == 0 then
+                    print("[GODMODE] Warte auf Wave...")
                 end
-            end
-
-            if nearestPart and dist < TP_DISTANCE then
-                dodgeWave(hrp, nearestPart)
             end
         end)
 
+        -- Re-apply bei Respawn
         if godmodeCharConn then godmodeCharConn:Disconnect() end
         godmodeCharConn = LocalPlayer.CharacterAdded:Connect(function()
             if not godmodeEnabled then return end
-            godmodeTpCooldown = false
+            task.wait(0.3)
+            disableWaveCollision()
+            print("[GODMODE] Nach Respawn: Wave-Kollision erneut deaktiviert")
         end)
-
-        print("[GODMODE] Wave-Dodge aktiv")
     end
 
     local function disableGodmode()
-        godmodeEnabled    = false
-        godmodeTpCooldown = false
+        godmodeEnabled = false
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() godmodeHeartbeat = nil end
         if godmodeCharConn  then godmodeCharConn:Disconnect()  godmodeCharConn  = nil end
-        print("[GODMODE] Deaktiviert")
+        enableWaveCollision()
+        print("[GODMODE] Deaktiviert — Wave-Kollision wiederhergestellt")
     end
 
     local godmodeWasActive = false
