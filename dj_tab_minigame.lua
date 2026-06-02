@@ -105,7 +105,7 @@ return function(Window, Rayfield, Utils)
         return nil
     end
 
-    local TP_DISTANCE   = 60  -- Wenn Wave naeher als X Studs -> TP
+    local TP_DISTANCE   = 100  -- Wenn Wave naeher als X Studs -> TP
     local TP_BEHIND_OFF = 15  -- Wie weit hinter die Wave TP-en
 
     local lastDebugPrint = 0  -- Throttle fuer Wave-Detected prints
