@@ -105,7 +105,7 @@ return function(Window, Rayfield, Utils)
         return nil
     end
 
-    local TP_DISTANCE   = 25  -- Wenn Wave naeher als X Studs -> TP
+    local TP_DISTANCE   = 60  -- Wenn Wave naeher als X Studs -> TP
     local TP_BEHIND_OFF = 15  -- Wie weit hinter die Wave TP-en
 
     local lastDebugPrint = 0  -- Throttle fuer Wave-Detected prints
@@ -165,7 +165,7 @@ return function(Window, Rayfield, Utils)
 
             -- Alle 2 Sekunden ausgeben ob Wave gefunden (nicht jeden Frame)
             local now = tick()
-            if now - lastDebugPrint >= 2 then
+            if now - lastDebugPrint >= 0.5 then
                 lastDebugPrint = now
                 if nearestPart then
                     local floorName = tostring(nearestPart.Parent and nearestPart.Parent.Parent and nearestPart.Parent.Parent.Name or "?")
