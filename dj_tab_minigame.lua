@@ -111,7 +111,7 @@ return function(Window, Rayfield, Utils)
     local lastDebugPrint = 0
 
     -- ================================================================
-    -- DEATH DEBUG
+    -- DEATH DEBUG (Global — findet alle Schadensquellen)
     -- ================================================================
     local deathDebugConns = {}
 
@@ -120,53 +120,78 @@ return function(Window, Rayfield, Utils)
         deathDebugConns = {}
 
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
+        local hrp      = character and character:FindFirstChild("HumanoidRootPart")
+        if not humanoid then
+            print("[DEATH DEBUG] Kein Humanoid gefunden!")
+            return
+        end
 
-        -- Health sinkt -> was hat Schaden gemacht?
+        local lastHp = humanoid.Health
+
+        -- HealthChanged: Schaden loggen + alle berührten Parts checken
         table.insert(deathDebugConns, humanoid.HealthChanged:Connect(function(hp)
-            if hp < humanoid.MaxHealth then
-                local dmg = humanoid.MaxHealth - hp
-                print(string.format("[DEATH DEBUG] Schaden erhalten: %.1f HP | Verbleibend: %.1f / %.1f",
-                    dmg, hp, humanoid.MaxHealth))
+            if hp < lastHp then
+                local dmg = lastHp - hp
+                print(string.format("[DEATH DEBUG] *** Schaden: %.1f | HP: %.1f -> %.1f ***", dmg, lastHp, hp))
 
-                -- Checken welche Wave-Parts noch CanTouch=true haben
-                local waves = workspace:FindFirstChild("Waves")
-                if waves then
-                    for _, floorFolder in ipairs(waves:GetChildren()) do
-                        for _, speedFolder in ipairs(floorFolder:GetChildren()) do
-                            for _, part in ipairs(speedFolder:GetChildren()) do
-                                if part:IsA("BasePart") and (part.CanCollide or part.CanTouch) then
-                                    print(string.format("[DEATH DEBUG] Wave-Part noch aktiv! %s > %s > %s | CanCollide=%s CanTouch=%s",
-                                        floorFolder.Name, speedFolder.Name, part.Name,
-                                        tostring(part.CanCollide), tostring(part.CanTouch)))
+                -- Alle Parts die den Spieler gerade berühren
+                if hrp then
+                    local ok, touching = pcall(function() return hrp:GetTouchingParts() end)
+                    if ok and touching then
+                        if #touching == 0 then
+                            print("[DEATH DEBUG] Keine Parts beruehrt — Schaden kommt von Script/Remote!")
+                        else
+                            for _, p in ipairs(touching) do
+                                local path = p.Name
+                                local par = p.Parent
+                                while par and par ~= workspace do
+                                    path = par.Name .. " > " .. path
+                                    par = par.Parent
                                 end
+                                print("[DEATH DEBUG] Beruehrt: " .. path)
                             end
                         end
                     end
                 end
             end
+            lastHp = hp
         end))
 
-        -- Gestorben
+        -- Gestorben: vollstaendiger Report
         table.insert(deathDebugConns, humanoid.Died:Connect(function()
-            print("[DEATH DEBUG] ===== SPIELER GESTORBEN =====")
-            -- Alle Touching Parts loggen
-            local hrp = character:FindFirstChild("HumanoidRootPart")
+            print("[DEATH DEBUG] ========== TOD ==========")
+            print("[DEATH DEBUG] Letzte HP vor Tod: " .. tostring(lastHp))
+
             if hrp then
-                local touching = hrp:GetTouchingParts()
-                if #touching == 0 then
-                    print("[DEATH DEBUG] Keine Parts berührt beim Tod")
-                else
+                -- Alle berührten Parts
+                local ok, touching = pcall(function() return hrp:GetTouchingParts() end)
+                if ok and touching and #touching > 0 then
+                    print("[DEATH DEBUG] Parts beim Tod beruehrt:")
                     for _, p in ipairs(touching) do
-                        print(string.format("[DEATH DEBUG] Berührt beim Tod: %s (Parent: %s)",
-                            p.Name, tostring(p.Parent and p.Parent.Name)))
+                        local path = p.Name
+                        local par = p.Parent
+                        while par and par ~= workspace do
+                            path = par.Name .. " > " .. path
+                            par = par.Parent
+                        end
+                        print("  -> " .. path .. " | CanTouch=" .. tostring(p.CanTouch) .. " CanCollide=" .. tostring(p.CanCollide))
                     end
+                else
+                    print("[DEATH DEBUG] Keine Parts beruehrt beim Tod!")
+                    print("[DEATH DEBUG] -> Schaden kommt vermutlich von einem Server-Script oder Remote-Event")
                 end
+
+                -- Position beim Tod
+                print(string.format("[DEATH DEBUG] Position beim Tod: (%.1f, %.1f, %.1f)",
+                    hrp.Position.X, hrp.Position.Y, hrp.Position.Z))
             end
-            print("[DEATH DEBUG] ==============================")
+
+            -- Humanoid State
+            print("[DEATH DEBUG] Humanoid State: " .. tostring(humanoid:GetState()))
+            print("[DEATH DEBUG] =========================")
         end))
 
-        print("[DEATH DEBUG] Death-Debug aktiv fuer: " .. (character.Name or "?"))
+        print("[DEATH DEBUG] Aktiv fuer: " .. (character.Name or "?") .. " | HP: " .. tostring(humanoid.Health))
     end
 
     local function enableGodmode()
