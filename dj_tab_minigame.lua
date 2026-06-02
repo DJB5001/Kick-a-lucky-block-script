@@ -49,75 +49,42 @@ return function(Window, Rayfield, Utils)
     end
 
     -- ================================================================
-    -- GODMODE (Platform + State + HealthChanged)
+    -- GODMODE (State + HealthChanged + Heartbeat)
     -- ================================================================
     local godmodeEnabled   = false
     local godmodeHeartbeat = nil
     local godmodeCharConn  = nil
     local godmodeStateConn = nil
-    local godmodePlatform  = nil
-
-    local function cleanPlatform()
-        if godmodePlatform and godmodePlatform.Parent then
-            pcall(function() godmodePlatform:Destroy() end)
-        end
-        godmodePlatform = nil
-    end
-
-    local function createPlatform(hrp)
-        cleanPlatform()
-        local p = Instance.new("Part")
-        p.Name          = "DJHUB_GodPlatform"
-        p.Size          = Vector3.new(4, 0.2, 4)
-        p.Anchored      = true
-        p.CanCollide    = true
-        p.Transparency  = 1
-        p.CanQuery      = false
-        p.CanTouch      = false
-        p.CastShadow    = false
-        p.CFrame        = hrp.CFrame - Vector3.new(0, 2.9, 0)
-        p.Parent        = workspace
-        godmodePlatform = p
-    end
 
     local function applyGodmode(character)
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        local hrp      = character and character:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not hrp then return end
+        if not humanoid then return end
 
-        -- States sperren
-        pcall(function()
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead,        false)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown,  false)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics,      false)
-        end)
-
-        -- Hohe HP setzen
+        -- HP hoch setzen
         pcall(function()
             humanoid.MaxHealth = 1e6
             humanoid.Health    = 1e6
         end)
 
-        -- HealthChanged sofort wiederherstellen
+        -- Dead + FallingDown sperren
+        pcall(function()
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead,       false)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        end)
+
+        -- HealthChanged: sofort wiederherstellen
         pcall(function()
             if godmodeStateConn then godmodeStateConn:Disconnect() end
             godmodeStateConn = humanoid.HealthChanged:Connect(function(hp)
                 if not godmodeEnabled then return end
-                if hp <= 0 then
-                    -- Sofort Respawn verhindern: HP zurücksetzen + Platform erneuern
+                if hp < humanoid.MaxHealth then
                     pcall(function()
-                        humanoid.Health = 1e6
+                        humanoid.Health = humanoid.MaxHealth
                         humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
                     end)
-                    createPlatform(hrp)
-                elseif hp < 1e6 then
-                    pcall(function() humanoid.Health = 1e6 end)
                 end
             end)
         end)
-
-        -- Platform unter den Spieler setzen
-        createPlatform(hrp)
     end
 
     local function enableGodmode()
@@ -125,44 +92,24 @@ return function(Window, Rayfield, Utils)
         local char = LocalPlayer.Character
         if char then applyGodmode(char) end
 
-        -- Heartbeat: Platform mitbewegen + States halten
+        -- Heartbeat: HP + Dead-State jeden Frame sichern
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() end
         godmodeHeartbeat = RunService.Heartbeat:Connect(function()
             if not godmodeEnabled then return end
-            local c   = LocalPlayer.Character
-            local h   = c and c:FindFirstChildOfClass("Humanoid")
-            local hrp = c and c:FindFirstChild("HumanoidRootPart")
-            if not h or not hrp then return end
-
-            -- HP halten
-            if h.Health < h.MaxHealth * 0.9 then
-                pcall(function() h.Health = h.MaxHealth end)
-            end
-
-            -- Dead-State jeden Frame sperren
+            local c = LocalPlayer.Character
+            local h = c and c:FindFirstChildOfClass("Humanoid")
+            if not h then return end
             pcall(function()
+                if h.Health < h.MaxHealth then h.Health = h.MaxHealth end
                 h:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
             end)
-
-            -- Platform unter Spieler halten
-            if godmodePlatform and godmodePlatform.Parent then
-                pcall(function()
-                    godmodePlatform.CFrame = CFrame.new(
-                        hrp.Position.X,
-                        hrp.Position.Y - 2.9,
-                        hrp.Position.Z
-                    )
-                end)
-            else
-                createPlatform(hrp)
-            end
         end)
 
         -- Re-apply bei Respawn
         if godmodeCharConn then godmodeCharConn:Disconnect() end
         godmodeCharConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
             if not godmodeEnabled then return end
-            task.wait(0.5)
+            task.wait(0.3)
             applyGodmode(newChar)
         end)
     end
@@ -172,7 +119,6 @@ return function(Window, Rayfield, Utils)
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() godmodeHeartbeat = nil end
         if godmodeCharConn  then godmodeCharConn:Disconnect()  godmodeCharConn  = nil end
         if godmodeStateConn then godmodeStateConn:Disconnect() godmodeStateConn = nil end
-        cleanPlatform()
 
         local char     = LocalPlayer.Character
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
@@ -182,7 +128,6 @@ return function(Window, Rayfield, Utils)
                 humanoid.Health    = 100
                 humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead,        true)
                 humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown,  true)
-                humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics,      true)
             end)
         end
     end
