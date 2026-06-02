@@ -194,26 +194,47 @@ return function(Window, Rayfield, Utils)
         print("[DEATH DEBUG] Aktiv fuer: " .. (character.Name or "?") .. " | HP: " .. tostring(humanoid.Health))
     end
 
+    -- Charakter-Parts auf CanTouch=false setzen
+    local function disableCharTouch(character)
+        local count = 0
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                pcall(function() part.CanTouch = false end)
+                count += 1
+            end
+        end
+        print("[GODMODE] " .. count .. " Charakter-Parts: CanTouch=false")
+    end
+
+    local function enableCharTouch(character)
+        if not character then return end
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                pcall(function() part.CanTouch = true end)
+            end
+        end
+        print("[GODMODE] Charakter-Parts: CanTouch wiederhergestellt")
+    end
+
     local function enableGodmode()
         godmodeEnabled = true
-        print("[GODMODE] Gestartet — deaktiviere Wave-Kollision...")
+        print("[GODMODE] Gestartet — deaktiviere Charakter-Touch...")
 
-        -- Death Debug sofort starten
         local char = LocalPlayer.Character
-        if char then startDeathDebug(char) end
+        if char then
+            startDeathDebug(char)
+            disableCharTouch(char)
+        end
 
-        disableWaveCollision()
-
-        -- Heartbeat: neue Wave-Parts die spawnen auch sofort deaktivieren
+        -- Heartbeat: CanTouch jeden Frame sichern (Spiel setzt es evtl. zurück)
         if godmodeHeartbeat then godmodeHeartbeat:Disconnect() end
         godmodeHeartbeat = RunService.Heartbeat:Connect(function()
             if not godmodeEnabled then return end
-            local now = tick()
-            if now - lastDebugPrint >= 1 then
-                lastDebugPrint = now
-                local count = disableWaveCollision()
-                if count == 0 then
-                    print("[GODMODE] Warte auf Wave...")
+            local c = LocalPlayer.Character
+            if not c then return end
+            for _, part in ipairs(c:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanTouch then
+                    pcall(function() part.CanTouch = false end)
                 end
             end
         end)
@@ -224,8 +245,8 @@ return function(Window, Rayfield, Utils)
             if not godmodeEnabled then return end
             task.wait(0.3)
             startDeathDebug(newChar)
-            disableWaveCollision()
-            print("[GODMODE] Nach Respawn: Wave-Kollision erneut deaktiviert")
+            disableCharTouch(newChar)
+            print("[GODMODE] Nach Respawn: Charakter-Touch erneut deaktiviert")
         end)
     end
 
@@ -235,8 +256,9 @@ return function(Window, Rayfield, Utils)
         if godmodeCharConn  then godmodeCharConn:Disconnect()  godmodeCharConn  = nil end
         for _, c in ipairs(deathDebugConns) do pcall(function() c:Disconnect() end) end
         deathDebugConns = {}
-        enableWaveCollision()
-        print("[GODMODE] Deaktiviert — Wave-Kollision wiederhergestellt")
+        local char = LocalPlayer.Character
+        if char then enableCharTouch(char) end
+        print("[GODMODE] Deaktiviert")
     end
 
     local godmodeWasActive = false
